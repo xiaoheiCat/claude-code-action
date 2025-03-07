@@ -94,9 +94,9 @@ runs:
       shell: bash
       run: |
         echo "Running Claude in Docker container with prompt:"
-        echo "----------------------------------""
+        echo "----------------------------------"
         cat ~/claude-prompt
-        echo "----------------------------------""
+        echo "----------------------------------"
         # Get the UID and GID of the current user on the host (the runner)
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
