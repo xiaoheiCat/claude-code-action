@@ -6,7 +6,10 @@ outputs:
 inputs:
   prompt:
     description: 'The prompt to Claude Code'
-    required: true
+    required: false
+  prompt-file:
+    description: 'The file to pipe into Claude Code'
+    required: false
   acknowledge-dangerously-skip-permissions-responsibility:
     description: 'By setting this value to "true", you accept that you have read and agreed to the disclaimer which is shown when running `claude code --dangerously-skip-permissions`'
     required: true
@@ -23,6 +26,15 @@ runs:
           exit 1
         fi
         echo "Acknowledgement confirmed."
+    
+    - name: Validate prompt inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.prompt }}" ] && [ -z "${{ inputs.prompt-file }}" ]; then
+          echo "Error: You must provide either 'prompt' or 'prompt-file' input."
+          exit 1
+        fi
+        echo "Prompt input validation passed."
 
     - name: Clone Claude Code repository
       shell: bash
@@ -81,25 +93,33 @@ runs:
         # Check that /home/node/.claude/config.json exists and is accessible
         docker exec -u $HOST_UID:$HOST_GID claude-code-container test -f /home/node/.claude/config.json
 
-    - name: Create prompt file
-      shell: bash
-      run: |
-        cat << 'EOF' > ~/claude-prompt.txt
-        ${{ inputs.prompt }}
-        EOF
-        echo "Created prompt file with user input"
-
     - name: Run Claude in Docker container
       id: claude
       shell: bash
       run: |
-        echo "Running Claude in Docker container to address PR feedback..."
         # Get the UID and GID of the current user on the host (the runner)
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
         echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
-        # Run Claude with the host's UID and GID with a 30-minute timeout
-        timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions < ~/claude-prompt.txt > ~/claude-output.txt
+        
+        # Handle all three valid cases: prompt only, prompt-file only, or both
+        if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
+          # Both prompt and prompt-file are provided
+          echo "Running Claude with both prompt argument and prompt-file input"
+          echo "Prompt argument: ${{ inputs.prompt }}"
+          echo "Prompt file: ${{ inputs.prompt-file }}"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+        elif [ ! -z "${{ inputs.prompt }}" ]; then
+          # Only prompt is provided
+          echo "Running Claude with prompt argument only"
+          echo "Prompt: ${{ inputs.prompt }}"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
+        elif [ ! -z "${{ inputs.prompt-file }}" ]; then
+          # Only prompt-file is provided
+          echo "Running Claude with prompt-file input only"
+          echo "Prompt file: ${{ inputs.prompt-file }}"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
+        fi
         
         # Display the output in the logs
         cat ~/claude-output.txt
