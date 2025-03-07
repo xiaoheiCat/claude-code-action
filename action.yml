@@ -1,0 +1,110 @@
+name: 'Claude Code'
+description: 'Runs Claude Code on the local repository'
+outputs:
+  result:
+    description: 'The output from Claude Code'
+inputs:
+  prompt:
+    description: 'The prompt to Claude Code'
+    required: true
+  acknowledge-dangerously-skip-permissions-responsibility:
+    description: 'By setting this value to "true", you accept that you have read and agreed to the disclaimer which is shown when running `claude code --dangerously-skip-permissions`'
+    required: true
+    
+runs:
+  using: 'composite'
+  steps:
+    - name: Check acknowledgement
+      shell: bash
+      run: |
+        if [ "${{ inputs.acknowledge-dangerously-skip-permissions-responsibility }}" != "true" ]; then
+          echo "Error: You must set acknowledge-dangerously-skip-permissions-responsibility to true to use this action."
+          echo "This acknowledges that you have read and agreed to the disclaimer shown when running 'claude code --dangerously-skip-permissions'."
+          exit 1
+        fi
+        echo "Acknowledgement confirmed."
+
+    - name: Clone Claude Code repository
+      shell: bash
+      run: |
+        git clone https://github.com/anthropics/claude-code.git ${GITHUB_ACTION_PATH}/claude-code
+
+    - name: Setup Claude Config for Docker
+      shell: bash
+      run: |
+        mkdir -p ${GITHUB_ACTION_PATH}/claude-code/.claude
+        cat ${GITHUB_ACTION_PATH}/config_template.json | sed 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' > ${GITHUB_ACTION_PATH}/claude-code/.claude/config.json
+        chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/config.json
+        echo "Claude config created for Docker mount"
+
+    - name: Build Claude Docker image
+      shell: bash
+      run: |
+        echo "Building Claude Docker image..."
+        docker build --build-arg TZ="${TZ:-America/Los_Angeles}" -t claude-code-sandbox ${GITHUB_ACTION_PATH}/claude-code/.devcontainer
+
+    - name: Start Claude Docker container
+      shell: bash
+      run: |
+        echo "Starting Claude Docker container..."
+        
+        # Get the UID and GID of the current user on the host (the runner)
+        HOST_UID=$(id -u)
+        HOST_GID=$(id -g)
+        echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
+        
+        # Start the container with the host's UID and GID
+        docker run -dit --rm \
+          --name claude-code-container \
+          --cap-add=NET_ADMIN --cap-add=NET_RAW \
+          -e NODE_OPTIONS="--max-old-space-size=4096" \
+          -e CLAUDE_CONFIG_DIR="/home/node/.claude" \
+          -e POWERLEVEL9K_DISABLE_GITSTATUS="true" \
+          -v claude-code-bashhistory:/commandhistory \
+          -v "${GITHUB_ACTION_PATH}/claude-code/.claude:/home/node/.claude" \
+          -v "$(pwd)":/workspace:delegated \
+          -w /workspace \
+          --user $HOST_UID:$HOST_GID \
+          claude-code-sandbox
+        
+        # Run the init-firewall script inside the container as root
+        docker exec -u root claude-code-container /usr/local/bin/init-firewall.sh
+        
+        # Change ownership of directories that were originally owned by node user
+        # This ensures the container user (with host UID/GID) can access these directories
+        docker exec -u root claude-code-container bash -c "
+          chown -R $HOST_UID:$HOST_GID /usr/local/share/npm-global /usr/local/share
+          chown -R $HOST_UID:$HOST_GID /commandhistory
+          chown -R $HOST_UID:$HOST_GID /home/node/.claude
+        "
+        
+        # Check that /home/node/.claude/config.json exists and is accessible
+        docker exec -u $HOST_UID:$HOST_GID claude-code-container test -f /home/node/.claude/config.json
+
+    - name: Create prompt file
+      shell: bash
+      run: |
+        cat << 'EOF' > ~/claude-prompt.txt
+        ${{ inputs.prompt }}
+        EOF
+        echo "Created prompt file with user input"
+
+    - name: Run Claude in Docker container
+      id: claude
+      shell: bash
+      run: |
+        echo "Running Claude in Docker container to address PR feedback..."
+        # Get the UID and GID of the current user on the host (the runner)
+        HOST_UID=$(id -u)
+        HOST_GID=$(id -g)
+        echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
+        # Run Claude with the host's UID and GID with a 30-minute timeout
+        timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions < ~/claude-prompt.txt > ~/claude-output.txt
+        
+        # Display the output in the logs
+        cat ~/claude-output.txt
+        
+        # Set the output variable
+        echo "result<<EOF" >> $GITHUB_OUTPUT
+        cat ~/claude-output.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
