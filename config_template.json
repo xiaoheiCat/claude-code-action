@@ -1,0 +1,27 @@
+{
+  "primaryApiKey": "CLAUDE_API_KEY",
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "0.2.30",
+  "projects": {
+    "/workspace": {
+      "allowedTools": [
+      ],
+      "history": [
+      ],
+      "dontCrawlDirectory": false,
+      "enableArchitectTool": false,
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "approvedMcprcServers": [],
+      "rejectedMcprcServers": [],
+      "ignorePatterns": [],
+      "exampleFiles": [],
+      "exampleFilesGeneratedAt": 1741180925950,
+      "hasCompletedProjectOnboarding": true
+    }
+  },
+  "doctorShownAtSession": 6,
+  "lastReleaseNotesSeen": "0.2.32",
+  "bypassPermissionsModeAccepted": true,
+  "verbose": true
+}
