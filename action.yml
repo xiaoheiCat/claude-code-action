@@ -1,4 +1,6 @@
-name: 'Claude Code'
+name: 'Claude Code Action'
+icon: git-pull-request
+color: red
 description: 'Runs Claude Code on the local repository'
 outputs:
   result:
