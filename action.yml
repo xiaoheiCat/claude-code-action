@@ -108,7 +108,7 @@ runs:
           echo "Running Claude with both prompt argument and prompt-file input"
           echo "Prompt argument: ${{ inputs.prompt }}"
           echo "Prompt file: ${{ inputs.prompt-file }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container bash -c "claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < '${{ inputs.prompt-file }}'" > ~/claude-output.txt
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
         elif [ ! -z "${{ inputs.prompt }}" ]; then
           # Only prompt is provided
           echo "Running Claude with prompt argument only"
