@@ -1,5 +1,7 @@
-name: 'Claude Code'
+name: 'Claude Code Action'
 description: 'Runs Claude Code on the local repository'
+icon: git-pull-request
+color: red
 outputs:
   result:
     description: 'The output from Claude Code'
