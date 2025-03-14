@@ -130,3 +130,5 @@ runs:
         echo "result<<EOF" >> $GITHUB_OUTPUT
         cat ~/claude-output.txt >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
+  outputs:
+    result: ${{ steps.claude.outputs.result }}
