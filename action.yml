@@ -5,6 +5,7 @@ color: red
 outputs:
   result:
     description: 'The output from Claude Code'
+    value: ${{ steps.claude.outputs.result }}
 inputs:
   prompt:
     description: 'The prompt to Claude Code'
@@ -146,6 +147,3 @@ runs:
       shell: bash
       run: |
         docker stop claude-code-container
-
-outputs:
-  result: ${{ steps.claude.outputs.result }}
