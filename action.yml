@@ -147,5 +147,5 @@ runs:
       run: |
         docker stop claude-code-container
 
-  outputs:
-    result: ${{ steps.claude.outputs.result }}
+outputs:
+  result: ${{ steps.claude.outputs.result }}
