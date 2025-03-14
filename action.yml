@@ -52,22 +52,11 @@ runs:
         chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/config.json
         echo "Claude config created for Docker mount"
 
-    - name: Cache Docker layers
-      uses: actions/cache@v3
-      with:
-        path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-docker-${{ github.sha }}
-
-    - name: Build Claude Docker image with cache
+    - name: Build Claude Docker image
       shell: bash
       run: |
-        DOCKER_BUILDKIT=1 docker build \
-          --build-arg TZ="${TZ:-America/Los_Angeles}" \
-          --build-arg BUILDKIT_INLINE_CACHE=1 \
-          --cache-from=type=local,src=/tmp/.buildx-cache \
-          --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
-          -t claude-code-sandbox ${GITHUB_ACTION_PATH}/claude-code/.devcontainer
-        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+        echo "Building Claude Docker image..."
+        docker build --build-arg TZ="${TZ:-America/Los_Angeles}" -t claude-code-sandbox ${GITHUB_ACTION_PATH}/claude-code/.devcontainer
 
     - name: Start Claude Docker container
       shell: bash
@@ -142,8 +131,3 @@ runs:
         echo "result<<EOF" >> $GITHUB_OUTPUT
         cat ~/claude-output.txt >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
-
-    - name: Cleanup Docker container
-      shell: bash
-      run: |
-        docker stop claude-code-container
