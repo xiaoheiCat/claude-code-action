@@ -20,4 +20,4 @@ jobs:
         with:
           context: claude-code/.devcontainer
           push: true
-          tags: ghcr.io/<your-org>/<your-repo>/claude-code-sandbox:latest
+          tags: ghcr.io/joesarre/claude-code-action/claude-code-sandbox:latest
