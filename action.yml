@@ -39,11 +39,6 @@ runs:
         fi
         echo "Prompt input validation passed."
 
-    - name: Clone Claude Code repository
-      shell: bash
-      run: |
-        git clone https://github.com/anthropics/claude-code.git ${GITHUB_ACTION_PATH}/claude-code
-
     - name: Setup Claude Config for Docker
       shell: bash
       run: |
@@ -51,12 +46,6 @@ runs:
         cat ${GITHUB_ACTION_PATH}/config_template.json | sed 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' > ${GITHUB_ACTION_PATH}/claude-code/.claude/config.json
         chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/config.json
         echo "Claude config created for Docker mount"
-
-    - name: Build Claude Docker image
-      shell: bash
-      run: |
-        echo "Building Claude Docker image..."
-        docker build --build-arg TZ="${TZ:-America/Los_Angeles}" -t claude-code-sandbox ${GITHUB_ACTION_PATH}/claude-code/.devcontainer
 
     - name: Start Claude Docker container
       shell: bash
@@ -80,7 +69,7 @@ runs:
           -v "$(pwd)":/workspace:delegated \
           -w /workspace \
           --user $HOST_UID:$HOST_GID \
-          claude-code-sandbox
+          ghcr.io/joesarre/claude-code-action/claude-code-sandbox:latest
         
         # Run the init-firewall script inside the container as root
         docker exec -u root claude-code-container /usr/local/bin/init-firewall.sh
