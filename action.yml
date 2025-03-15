@@ -111,21 +111,23 @@ runs:
           echo "Running Claude with both prompt argument and prompt-file input"
           echo "Prompt argument: ${{ inputs.prompt }}"
           echo "Prompt file: ${{ inputs.prompt-file }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > "${GITHUB_ACTION_PATH}/claude-output.txt"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
         elif [ ! -z "${{ inputs.prompt }}" ]; then
           # Only prompt is provided
           echo "Running Claude with prompt argument only"
           echo "Prompt: ${{ inputs.prompt }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > "${GITHUB_ACTION_PATH}/claude-output.txt"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
         elif [ ! -z "${{ inputs.prompt-file }}" ]; then
           # Only prompt-file is provided
           echo "Running Claude with prompt-file input only"
           echo "Prompt file: ${{ inputs.prompt-file }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > "${GITHUB_ACTION_PATH}/claude-output.txt"
+          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
         fi
         
         # Display the output in the logs
-        cat "${GITHUB_ACTION_PATH}/claude-output.txt"
+        cat ~/claude-output.txt
         
         # Set the output variable
-        echo "result-file=${GITHUB_ACTION_PATH}/claude-output.txt"
+        echo "result<<EOF" >> $GITHUB_OUTPUT
+        cat ~/claude-output.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
