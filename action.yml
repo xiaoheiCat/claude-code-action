@@ -93,11 +93,6 @@ runs:
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
         echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
-        if [ "${{ inputs.verbose }}" != "true" ]; then
-          VERBOSE_ARG=
-        else
-          VERBOSE_ARG=--verbose
-        fi
         
         # Handle all three valid cases: prompt only, prompt-file only, or both
         if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
@@ -105,17 +100,29 @@ runs:
           echo "Running Claude with both prompt argument and prompt-file input"
           echo "Prompt argument: ${{ inputs.prompt }}"
           echo "Prompt file: ${{ inputs.prompt-file }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions $VERBOSE_ARG '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+          if [ "${{ inputs.verbose }}" != "true" ]; then
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+          else
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+          fi
         elif [ ! -z "${{ inputs.prompt }}" ]; then
           # Only prompt is provided
           echo "Running Claude with prompt argument only"
           echo "Prompt: ${{ inputs.prompt }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions $VERBOSE_ARG '${{ inputs.prompt }}' > ~/claude-output.txt
+          if [ "${{ inputs.verbose }}" != "true" ]; then
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
+          else
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+          fi
         elif [ ! -z "${{ inputs.prompt-file }}" ]; then
           # Only prompt-file is provided
           echo "Running Claude with prompt-file input only"
           echo "Prompt file: ${{ inputs.prompt-file }}"
-          timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions $VERBOSE_ARG < ${{ inputs.prompt-file }} > ~/claude-output.txt
+          if [ "${{ inputs.verbose }}" != "true" ]; then
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
+          else
+            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+          fi
         fi
         
         # Display the output in the logs
