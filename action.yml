@@ -128,7 +128,7 @@ runs:
         # Display the output in the logs
         cat ~/claude-output.txt
         
-        # Set the output variable
-        echo "result<<EOF" >> $GITHUB_OUTPUT
+        # Set the output variable. Use a random string for the EOF marker so that EOF in the claude output (which can happen if claude does any bash work) doesn't confuse github
+        echo "result<<EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
         cat ~/claude-output.txt >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
