@@ -89,46 +89,54 @@ runs:
       id: claude
       shell: bash
       run: |
-        # Get the UID and GID of the current user on the host (the runner)
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
         echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
-        
-        # Handle all three valid cases: prompt only, prompt-file only, or both
-        if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
-          # Both prompt and prompt-file are provided
-          echo "Running Claude with both prompt argument and prompt-file input"
-          echo "Prompt argument: ${{ inputs.prompt }}"
-          echo "Prompt file: ${{ inputs.prompt-file }}"
-          if [ "${{ inputs.verbose }}" != "true" ]; then
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
-          else
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+
+        (
+          set +e  # allow script to continue on errors
+          
+          EXIT_CODE=0
+          
+          if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
+            echo "Running Claude with both prompt and file"
+            echo "Prompt argument: ${{ inputs.prompt }}"
+            echo "Prompt file: ${{ inputs.prompt-file }}"
+            if [ "${{ inputs.verbose }}" != "true" ]; then
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+              EXIT_CODE=$?
+            else
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              EXIT_CODE=$?
+            fi
+          elif [ ! -z "${{ inputs.prompt }}" ]; then
+            echo "Running Claude with prompt argument only"
+            echo "Prompt: ${{ inputs.prompt }}"
+            if [ "${{ inputs.verbose }}" != "true" ]; then
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
+              EXIT_CODE=$?
+            else
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              EXIT_CODE=$?
+            fi
+          elif [ ! -z "${{ inputs.prompt-file }}" ]; then
+            echo "Running Claude with prompt-file input only"
+            echo "Prompt file: ${{ inputs.prompt-file }}"
+            if [ "${{ inputs.verbose }}" != "true" ]; then
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
+              EXIT_CODE=$?
+            else
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              EXIT_CODE=$?
+            fi
           fi
-        elif [ ! -z "${{ inputs.prompt }}" ]; then
-          # Only prompt is provided
-          echo "Running Claude with prompt argument only"
-          echo "Prompt: ${{ inputs.prompt }}"
-          if [ "${{ inputs.verbose }}" != "true" ]; then
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
-          else
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
-          fi
-        elif [ ! -z "${{ inputs.prompt-file }}" ]; then
-          # Only prompt-file is provided
-          echo "Running Claude with prompt-file input only"
-          echo "Prompt file: ${{ inputs.prompt-file }}"
-          if [ "${{ inputs.verbose }}" != "true" ]; then
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
-          else
-            timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
-          fi
-        fi
-        
-        # Display the output in the logs
-        cat ~/claude-output.txt
-        
-        # Set the output variable. Use a random string for the EOF marker so that EOF in the claude output (which can happen if claude does any bash work) doesn't confuse github
-        echo "result<<EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
-        cat ~/claude-output.txt >> $GITHUB_OUTPUT
-        echo "EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
+
+          cat ~/claude-output.txt
+
+          # Set the output variable. Use a random string for the EOF marker so that EOF in the claude output (which can happen if claude does any bash work) doesn't confuse github
+          echo "result<<EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
+          cat ~/claude-output.txt >> $GITHUB_OUTPUT
+          echo "EOF3c959e1250034ce183a56fcb738119a5" >> $GITHUB_OUTPUT
+
+          exit $EXIT_CODE
+        )
