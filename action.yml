@@ -98,6 +98,7 @@ runs:
 
         (
           set +e  # allow script to continue on errors
+          set +x  # debug
           
           EXIT_CODE=0
           
@@ -134,6 +135,7 @@ runs:
             fi
           fi
 
+          echo "Claude output:"
           cat ~/claude-output.txt
 
           # Set the output variable. Use a random string for the EOF marker so that EOF in the claude output (which can happen if claude does any bash work) doesn't confuse github
