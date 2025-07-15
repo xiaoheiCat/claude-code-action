@@ -116,20 +116,20 @@ runs:
             echo "Running Claude with prompt argument only"
             echo "Prompt: ${{ inputs.prompt }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           elif [ ! -z "${{ inputs.prompt-file }}" ]; then
             echo "Running Claude with prompt-file input only"
             echo "Prompt file: ${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           fi
