@@ -460,90 +460,38 @@ runs:
       run: |
         echo "🤖 正在使用 Claude 智能生成 PR 内容..."
         
-        # Read collected information
+        # 读取收集的信息
         STATS=$(cat /tmp/git-stats.txt)
         DIFF=$(cat /tmp/git-diff.txt)
         CHANGED_FILES=$(cat /tmp/changed-files.txt)
         USER_PROMPT="${{ inputs.prompt }}"
         
-        # Create analysis prompt for Claude
-        ANALYSIS_PROMPT="请作为一个专业的代码审查专家，分析以下代码变更并生成专业的 Pull Request 标题和描述。
-
-        原始用户请求：
-        ${USER_PROMPT}
-
-        变更统计：
-        ${STATS}
-
-        变更的文件：
-        ${CHANGED_FILES}
-
-        代码差异：
-        ${DIFF}
-
-        请按照以下格式输出：
-
-        PR_TITLE: [简洁专业的PR标题，不超过60字符，体现主要变更]
-        PR_BODY: [详细的PR描述，包括：
-        1. 变更概述（2-3句话说明做了什么）
-        2. 主要改动点（列出3-5个关键变更）
-        3. 影响范围（说明可能影响的功能或模块）
-        4. 测试建议（如果适用）
-        请用专业但易懂的中文描述]
-
-        注意：
-        - 标题要简洁有力，体现核心改动
-        - 描述要专业详细，但避免过于技术化
-        - 重点关注业务价值和用户影响
-        - 如果是重构，说明改进的方面
-        - 如果是新功能，说明功能价值"
-
-        # Create temporary file for analysis
+        # 创建简化的 Claude 分析提示词
+        ANALYSIS_PROMPT="请分析以下代码变更并生成 Pull Request 内容。
+    
+        用户请求: ${USER_PROMPT}
+        变更文件: ${CHANGED_FILES}
+        变更统计: ${STATS}
+    
+        请按此格式输出：
+        PR_TITLE: [简洁的标题]
+        PR_BODY: [详细描述]"
+        
         echo "$ANALYSIS_PROMPT" > /tmp/claude-analysis-prompt.txt
         
-        echo "📡 正在调用 Claude 进行智能分析..."
-        
-        # Set environment variables for Claude analysis
+        # 调用 Claude
         export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
         if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
           export ANTHROPIC_BASE_URL="${{ env.ANTHROPIC_BASE_URL }}"
         fi
-        export NODE_OPTIONS="--max-old-space-size=4096"
-        export CLAUDE_CONFIG_DIR="$HOME/.claude"
         
-        # Call Claude to analyze changes with timeout
-        timeout 300s claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
-        CLAUDE_EXIT_CODE=$?
-        
-        if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
-          echo "✅ Claude 智能分析完成"
-          
-          # Check if we got a proper response
-          if grep -q "PR_TITLE:" /tmp/claude-analysis-result.txt && grep -q "PR_BODY:" /tmp/claude-analysis-result.txt; then
-            echo "🎯 解析成功，找到标准格式输出"
-            echo "--- Claude 分析结果预览 ---"
-            head -10 /tmp/claude-analysis-result.txt
-            echo "--- 预览结束 ---"
-          else
-            echo "⚠️ Claude 输出格式不标准，使用备用解析"
-            # Try to use the whole output as PR body
-            echo "PR_TITLE: 🤖 Claude Code: ${USER_PROMPT}" > /tmp/claude-analysis-fallback.txt
-            echo "PR_BODY: " >> /tmp/claude-analysis-fallback.txt
-            cat /tmp/claude-analysis-result.txt >> /tmp/claude-analysis-fallback.txt
-            mv /tmp/claude-analysis-fallback.txt /tmp/claude-analysis-result.txt
-          fi
+        if timeout 180s claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1; then
+          echo "✅ Claude 分析完成"
+          cat /tmp/claude-analysis-result.txt
         else
-          echo "⚠️ Claude 分析失败 (退出码: $CLAUDE_EXIT_CODE)，使用备用方案"
-          echo "错误信息："
-          tail -5 /tmp/claude-analysis-result.txt 2>/dev/null || echo "无法读取错误信息"
-          
-          # Fallback to simple generation
+          echo "⚠️ Claude 分析失败，使用备用方案"
           echo "PR_TITLE: 🤖 Claude Code: ${USER_PROMPT}" > /tmp/claude-analysis-result.txt
-          echo "PR_BODY: **变更说明:** ${USER_PROMPT}" >> /tmp/claude-analysis-result.txt
-          echo "" >> /tmp/claude-analysis-result.txt
-          echo "通过 Claude Code 基于用户提示词进行的智能代码变更。" >> /tmp/claude-analysis-result.txt
-          echo "" >> /tmp/claude-analysis-result.txt
-          echo "⚠️ 注意：由于 Claude 分析服务临时不可用，此描述为自动生成的备用内容。" >> /tmp/claude-analysis-result.txt
+          echo "PR_BODY: 通过 Claude Code 进行的代码变更。原始请求: ${USER_PROMPT}" >> /tmp/claude-analysis-result.txt
         fi
 
     - name: Push branch and create Pull Request
