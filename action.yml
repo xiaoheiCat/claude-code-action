@@ -79,78 +79,98 @@ runs:
         fi
         echo "提示词输入验证通过。"
 
-    - name: Setup Claude Config for Docker
+    - name: Install Node.js and system dependencies
       shell: bash
       run: |
-        mkdir -p ${GITHUB_ACTION_PATH}/claude-code/.claude
+        echo "🔧 安装系统依赖..."
+        
+        # Update package lists
+        sudo apt-get update
+        
+        # Install required system packages
+        sudo apt-get install -y \
+          git \
+          jq \
+          gh \
+          curl \
+          wget \
+          unzip
+        
+        # Install Node.js 20 if not already available
+        if ! command -v node &> /dev/null || [[ "$(node --version)" < "v20" ]]; then
+          echo "📦 安装 Node.js 20..."
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+        else
+          echo "✅ Node.js 已可用: $(node --version)"
+        fi
+        
+        echo "✅ 系统依赖安装完成"
+
+    - name: Install Claude Code
+      shell: bash
+      run: |
+        echo "📦 安装 Claude Code..."
+        
+        # Install Claude Code globally
+        sudo npm install -g @anthropic-ai/claude-code
+        
+        # Verify installation
+        claude --version
+        
+        echo "✅ Claude Code 安装完成"
+
+    - name: Setup Claude Config
+      shell: bash
+      run: |
+        echo "⚙️ 配置 Claude Code..."
+        
+        # Create config directory in home
+        mkdir -p ~/.claude
         
         # Start with base config template
-        cp ${GITHUB_ACTION_PATH}/config_template.json ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        cp ${GITHUB_ACTION_PATH}/config_template.json ~/.claude/.claude.json
         
         # Replace API key
-        sed -i 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        sed -i 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' ~/.claude/.claude.json
         
         # Add base URL if provided via environment variable
         if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
           echo "配置自定义 Anthropic API 端点: ${{ env.ANTHROPIC_BASE_URL }}"
           # Add baseUrl to the config JSON
-          sed -i "2i\\  \"baseUrl\": \"${{ env.ANTHROPIC_BASE_URL }}\"," ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+          sed -i "2i\\  \"baseUrl\": \"${{ env.ANTHROPIC_BASE_URL }}\"," ~/.claude/.claude.json
         else
           echo "使用默认 Anthropic API 端点"
         fi
         
-        chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
-        echo "Docker 挂载的 Claude 配置已创建"
+        chmod 600 ~/.claude/.claude.json
+        echo "✅ Claude 配置已创建"
         
         # Debug: Show config (without API key)
         echo "配置文件内容预览:"
-        sed 's/"[^"]*API[^"]*"/"[REDACTED]"/' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json | head -10
+        sed 's/"[^"]*API[^"]*"/"[REDACTED]"/' ~/.claude/.claude.json | head -10
 
-    - name: Start Claude Docker container
+    - name: Setup environment variables
       shell: bash
       run: |
-        echo "正在启动 Claude Docker 容器..."
+        echo "🌍 设置环境变量..."
         
-        # Get the UID and GID of the current user on the host (the runner)
-        HOST_UID=$(id -u)
-        HOST_GID=$(id -g)
-        echo "主机运行器 UID:GID = $HOST_UID:$HOST_GID"
+        # Set Node.js memory options
+        echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
         
-        # Start the container with the host's UID and GID
-        docker run -dit --rm \
-          --name claude-code-container \
-          --cap-add=NET_ADMIN --cap-add=NET_RAW \
-          -e NODE_OPTIONS="--max-old-space-size=4096" \
-          -e CLAUDE_CONFIG_DIR="/home/node/.claude" \
-          -e POWERLEVEL9K_DISABLE_GITSTATUS="true" \
-          -v claude-code-bashhistory:/commandhistory \
-          -v "${GITHUB_ACTION_PATH}/claude-code/.claude:/home/node/.claude" \
-          -v "$(pwd)":/workspace:delegated \
-          -w /workspace \
-          --user $HOST_UID:$HOST_GID \
-          ghcr.io/joesarre/claude-code-action/claude-code-sandbox:latest
+        # Set Claude config directory
+        echo "CLAUDE_CONFIG_DIR=$HOME/.claude" >> $GITHUB_ENV
         
-        # Run the init-firewall script inside the container as root
-        # docker exec -u root claude-code-container /usr/local/bin/init-firewall.sh
+        # Set other environment variables
+        echo "POWERLEVEL9K_DISABLE_GITSTATUS=true" >> $GITHUB_ENV
         
-        # Change ownership of directories that were originally owned by node user
-        # This ensures the container user (with host UID/GID) can access these directories
-        docker exec -u root claude-code-container bash -c "
-          chown -R $HOST_UID:$HOST_GID /usr/local/share/npm-global /usr/local/share
-          chown -R $HOST_UID:$HOST_GID /commandhistory
-          chown -R $HOST_UID:$HOST_GID /home/node/.claude
-        "
-        
-        # Check that /home/node/.claude/.claude.json exists and is accessible
-        docker exec -u $HOST_UID:$HOST_GID claude-code-container test -f /home/node/.claude/.claude.json
+        echo "✅ 环境变量设置完成"
 
-    - name: Run Claude in Docker container
+    - name: Run Claude Code
       id: claude
       shell: bash
       run: |
-        HOST_UID=$(id -u)
-        HOST_GID=$(id -g)
-        echo "主机运行器 UID:GID = $HOST_UID:$HOST_GID"
+        echo "🤖 运行 Claude Code..."
 
         (
           set +e  # allow script to continue on errors
@@ -158,43 +178,43 @@ runs:
           
           EXIT_CODE=0
           
-          # Prepare environment variables for Docker - use arrays for safety
-          ENV_ARGS=()
-          ENV_ARGS+=("-e" "HOME=/home/node")
-          ENV_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+          # Set environment variables for Claude
+          export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
           if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
-            ENV_ARGS+=("-e" "ANTHROPIC_BASE_URL=${{ env.ANTHROPIC_BASE_URL }}")
+            export ANTHROPIC_BASE_URL="${{ env.ANTHROPIC_BASE_URL }}"
           fi
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          export CLAUDE_CONFIG_DIR="$HOME/.claude"
           
           if [ "${{ inputs.prompt }}" != "" ] && [ "${{ inputs.prompt-file }}" != "" ]; then
             echo "同时使用提示词和文件运行 Claude"
             echo "提示词参数：${{ inputs.prompt }}"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
+              timeout 30m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 30m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
               EXIT_CODE=$?
             fi
           elif [ "${{ inputs.prompt }}" != "" ]; then
             echo "仅使用提示词参数运行 Claude"
             echo "提示词：${{ inputs.prompt }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions "${{ inputs.prompt }}" > ~/claude-output.txt 2>&1
+              timeout 30m claude -p --dangerously-skip-permissions "${{ inputs.prompt }}" > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
+              timeout 30m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           elif [ "${{ inputs.prompt-file }}" != "" ]; then
             echo "仅使用提示词文件运行 Claude"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions < "${{ inputs.prompt-file }}" > ~/claude-output.txt 2>&1
+              timeout 30m claude -p --dangerously-skip-permissions < "${{ inputs.prompt-file }}" > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID "${ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
+              timeout 30m claude -p --dangerously-skip-permissions --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           fi
@@ -218,7 +238,7 @@ runs:
           echo "正在检查 git 变更..."
           
           # Configure git if not already configured
-          git config --global --add safe.directory /workspace || true
+          git config --global --add safe.directory $(pwd) || true
           git config --global user.name "Claude Code Action" || true
           git config --global user.email "action@users.noreply.github.com" || true
           
@@ -482,15 +502,16 @@ runs:
         
         echo "📡 正在调用 Claude 进行智能分析..."
         
-        # Prepare environment variables for Docker (in analysis step)
-        ANALYSIS_ENV_ARGS=()
-        ANALYSIS_ENV_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+        # Set environment variables for Claude analysis
+        export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
         if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
-          ANALYSIS_ENV_ARGS+=("-e" "ANTHROPIC_BASE_URL=${{ env.ANTHROPIC_BASE_URL }}")
+          export ANTHROPIC_BASE_URL="${{ env.ANTHROPIC_BASE_URL }}"
         fi
+        export NODE_OPTIONS="--max-old-space-size=4096"
+        export CLAUDE_CONFIG_DIR="$HOME/.claude"
         
         # Call Claude to analyze changes with timeout
-        timeout 300s docker exec -i "${ANALYSIS_ENV_ARGS[@]}" claude-code-container claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
+        timeout 300s claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
         CLAUDE_EXIT_CODE=$?
         
         if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
