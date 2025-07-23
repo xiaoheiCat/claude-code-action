@@ -150,21 +150,18 @@ runs:
         echo "配置文件内容预览:"
         sed 's/"[^"]*API[^"]*"/"[REDACTED]"/' ~/.claude/.claude.json | head -10
 
-    - name: Setup environment variables
+    - name: Verify Claude installation
       shell: bash
       run: |
-        echo "🌍 设置环境变量..."
+        echo "🔍 验证 Claude Code 安装..."
         
-        # Set Node.js memory options
-        echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
+        # Verify Claude is installed and accessible
+        claude --version
         
-        # Set Claude config directory
-        echo "CLAUDE_CONFIG_DIR=$HOME/.claude" >> $GITHUB_ENV
+        # Verify config directory exists
+        ls -la ~/.claude/
         
-        # Set other environment variables
-        echo "POWERLEVEL9K_DISABLE_GITSTATUS=true" >> $GITHUB_ENV
-        
-        echo "✅ 环境变量设置完成"
+        echo "✅ Claude Code 安装验证完成"
 
     - name: Run Claude Code
       id: claude
