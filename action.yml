@@ -188,10 +188,10 @@ runs:
             echo "提示词参数：${{ inputs.prompt }}"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
+              timeout 120m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
               EXIT_CODE=$?
             else
-              timeout 30m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 120m claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
               EXIT_CODE=$?
             fi
           elif [ "${{ inputs.prompt }}" != "" ]; then
