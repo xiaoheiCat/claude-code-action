@@ -131,7 +131,7 @@ runs:
           ghcr.io/joesarre/claude-code-action/claude-code-sandbox:latest
         
         # Run the init-firewall script inside the container as root
-        docker exec -u root claude-code-container /usr/local/bin/init-firewall.sh
+        # docker exec -u root claude-code-container /usr/local/bin/init-firewall.sh
         
         # Change ownership of directories that were originally owned by node user
         # This ensures the container user (with host UID/GID) can access these directories
