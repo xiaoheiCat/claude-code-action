@@ -38,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       prompt:
-        description: 'Prompt for Claude Code'
+        description: 'Claude Code 问题/请求 输入...'
         required: true
         type: string
 
@@ -51,16 +51,51 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: joesarre/claude-code-action@v1
+        uses: xiaoheiCat/claude-code-action@v8
         env:
+          ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           prompt: ${{ github.event.inputs.prompt }}
           acknowledge-dangerously-skip-permissions-responsibility: "true"
           
-      - name: Use Claude's output
+      - name: Create Claude Output Summary
         run: |
-          echo "Claude's output: ${{ steps.claude.outputs.result }}"
+          # 获取当前时间戳
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
+          
+          # 创建 Summary 卡片
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🤖 Claude Code 执行结果
+
+          ## 📋 任务信息
+          - **执行时间**: $TIMESTAMP
+          - **用户输入**: `${{ github.event.inputs.prompt }}`
+          - **工作流**: ${{ github.workflow }}
+          - **运行 ID**: ${{ github.run_id }}
+
+          ## 🎯 Claude 输出内容
+
+          <details>
+          <summary>点击展开 Claude 的完整响应</summary>
+
+          ```
+          ${{ steps.claude.outputs.result }}
+          ```
+
+          </details>
+
+          ---
+          *由 GitHub Actions 自动生成*
+          EOF
+          
+          # 同时在控制台输出摘要信息
+          echo "📝 Claude Code 执行摘要:"
+          echo "⏰ 执行时间: $TIMESTAMP"
+          echo "💭 用户提示: ${{ github.event.inputs.prompt }}"
+          echo "✅ 执行状态: 成功完成"
+          echo ""
+          echo "🔍 详细输出内容已添加到 GitHub Actions Summary 中"
 ```
 
 ## About the `--dangerously-skip-permissions` Flag
