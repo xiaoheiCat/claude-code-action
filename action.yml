@@ -56,6 +56,10 @@ inputs:
     description: '显示将被清理的内容但不实际删除'
     required: false
     default: 'false'
+  anthropic-base-url:
+    description: 'Anthropic API 的基础 URL（用于自定义端点）'
+    required: false
+    default: ''
     
 runs:
   using: 'composite'
@@ -83,9 +87,28 @@ runs:
       shell: bash
       run: |
         mkdir -p ${GITHUB_ACTION_PATH}/claude-code/.claude
-        cat ${GITHUB_ACTION_PATH}/config_template.json | sed 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' > ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        
+        # Start with base config template
+        cp ${GITHUB_ACTION_PATH}/config_template.json ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        
+        # Replace API key
+        sed -i 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        
+        # Add base URL if provided
+        if [ -n "${{ inputs.anthropic-base-url }}" ]; then
+          echo "配置自定义 Anthropic API 端点: ${{ inputs.anthropic-base-url }}"
+          # Add baseUrl to the config JSON
+          sed -i '2i\  "baseUrl": "${{ inputs.anthropic-base-url }}",' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+        else
+          echo "使用默认 Anthropic API 端点"
+        fi
+        
         chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
         echo "Docker 挂载的 Claude 配置已创建"
+        
+        # Debug: Show config (without API key)
+        echo "配置文件内容预览:"
+        sed 's/"[^"]*API[^"]*"/"[REDACTED]"/' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json | head -10
 
     - name: Start Claude Docker container
       shell: bash
@@ -139,35 +162,41 @@ runs:
           
           EXIT_CODE=0
           
+          # Prepare environment variables for Docker
+          DOCKER_ENV_VARS="-e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+          if [ -n "${{ inputs.anthropic-base-url }}" ]; then
+            DOCKER_ENV_VARS="$DOCKER_ENV_VARS -e ANTHROPIC_BASE_URL=${{ inputs.anthropic-base-url }}"
+          fi
+          
           if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
             echo "同时使用提示词和文件运行 Claude"
             echo "提示词参数：${{ inputs.prompt }}"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
               EXIT_CODE=$?
             fi
           elif [ ! -z "${{ inputs.prompt }}" ]; then
             echo "仅使用提示词参数运行 Claude"
             echo "提示词：${{ inputs.prompt }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           elif [ ! -z "${{ inputs.prompt-file }}" ]; then
             echo "仅使用提示词文件运行 Claude"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           fi
@@ -455,8 +484,14 @@ PR_BODY: [详细的PR描述，包括：
         
         echo "📡 正在调用 Claude 进行智能分析..."
         
+        # Prepare environment variables for Docker (in analysis step)
+        ANALYSIS_DOCKER_ENV="-e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+        if [ -n "${{ inputs.anthropic-base-url }}" ]; then
+          ANALYSIS_DOCKER_ENV="$ANALYSIS_DOCKER_ENV -e ANTHROPIC_BASE_URL=${{ inputs.anthropic-base-url }}"
+        fi
+        
         # Call Claude to analyze changes with timeout
-        timeout 300s docker exec -i claude-code-container claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
+        timeout 300s docker exec -i $ANALYSIS_DOCKER_ENV claude-code-container claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
         CLAUDE_EXIT_CODE=$?
         
         if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
