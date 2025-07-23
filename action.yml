@@ -164,18 +164,18 @@ runs:
             DOCKER_ENV_VARS="$DOCKER_ENV_VARS -e ANTHROPIC_BASE_URL=${{ env.ANTHROPIC_BASE_URL }}"
           fi
           
-          if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
+          if [ "${{ inputs.prompt }}" != "" ] && [ "${{ inputs.prompt-file }}" != "" ]; then
             echo "同时使用提示词和文件运行 Claude"
             echo "提示词参数：${{ inputs.prompt }}"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < "${{ inputs.prompt-file }}" > ~/claude-output.txt
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt
               EXIT_CODE=$?
             fi
-          elif [ ! -z "${{ inputs.prompt }}" ]; then
+          elif [ "${{ inputs.prompt }}" != "" ]; then
             echo "仅使用提示词参数运行 Claude"
             echo "提示词：${{ inputs.prompt }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
@@ -185,14 +185,14 @@ runs:
               timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' --verbose --output-format stream-json | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
-          elif [ ! -z "${{ inputs.prompt-file }}" ]; then
+          elif [ "${{ inputs.prompt-file }}" != "" ]; then
             echo "仅使用提示词文件运行 Claude"
             echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions < "${{ inputs.prompt-file }}" > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             else
-              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < ${{ inputs.prompt-file }} | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
+              timeout 30m docker exec -i -u $HOST_UID:$HOST_GID $DOCKER_ENV_VARS claude-code-container claude -p --dangerously-skip-permissions --verbose --output-format stream-json < "${{ inputs.prompt-file }}" | ${GITHUB_ACTION_PATH}/parse_claude_output.sh > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
             fi
           fi
