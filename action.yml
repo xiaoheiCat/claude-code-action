@@ -56,10 +56,6 @@ inputs:
     description: '显示将被清理的内容但不实际删除'
     required: false
     default: 'false'
-  anthropic-base-url:
-    description: 'Anthropic API 的基础 URL（用于自定义端点）'
-    required: false
-    default: ''
     
 runs:
   using: 'composite'
@@ -94,11 +90,11 @@ runs:
         # Replace API key
         sed -i 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
         
-        # Add base URL if provided
-        if [ -n "${{ inputs.anthropic-base-url }}" ]; then
-          echo "配置自定义 Anthropic API 端点: ${{ inputs.anthropic-base-url }}"
+        # Add base URL if provided via environment variable
+        if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
+          echo "配置自定义 Anthropic API 端点: ${{ env.ANTHROPIC_BASE_URL }}"
           # Add baseUrl to the config JSON
-          sed -i '2i\  "baseUrl": "${{ inputs.anthropic-base-url }}",' ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
+          sed -i "2i\\  \"baseUrl\": \"${{ env.ANTHROPIC_BASE_URL }}\"," ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
         else
           echo "使用默认 Anthropic API 端点"
         fi
@@ -164,8 +160,8 @@ runs:
           
           # Prepare environment variables for Docker
           DOCKER_ENV_VARS="-e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
-          if [ -n "${{ inputs.anthropic-base-url }}" ]; then
-            DOCKER_ENV_VARS="$DOCKER_ENV_VARS -e ANTHROPIC_BASE_URL=${{ inputs.anthropic-base-url }}"
+          if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
+            DOCKER_ENV_VARS="$DOCKER_ENV_VARS -e ANTHROPIC_BASE_URL=${{ env.ANTHROPIC_BASE_URL }}"
           fi
           
           if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
@@ -486,8 +482,8 @@ PR_BODY: [详细的PR描述，包括：
         
         # Prepare environment variables for Docker (in analysis step)
         ANALYSIS_DOCKER_ENV="-e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
-        if [ -n "${{ inputs.anthropic-base-url }}" ]; then
-          ANALYSIS_DOCKER_ENV="$ANALYSIS_DOCKER_ENV -e ANTHROPIC_BASE_URL=${{ inputs.anthropic-base-url }}"
+        if [ -n "${{ env.ANTHROPIC_BASE_URL }}" ]; then
+          ANALYSIS_DOCKER_ENV="$ANALYSIS_DOCKER_ENV -e ANTHROPIC_BASE_URL=${{ env.ANTHROPIC_BASE_URL }}"
         fi
         
         # Call Claude to analyze changes with timeout
