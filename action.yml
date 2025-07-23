@@ -1,24 +1,61 @@
-name: 'Claude Code Action'
-description: 'Runs Claude Code on the local repository'
+name: 'Claude Code 操作'
+description: '在本地仓库中运行 Claude Code'
 icon: git-pull-request
 color: red
 outputs:
   result:
-    description: 'The output from Claude Code'
+    description: 'Claude Code 的输出结果'
     value: ${{ steps.claude.outputs.result }}
+  pr-url:
+    description: '创建的拉取请求链接（如果启用了拉取请求创建）'
+    value: ${{ steps.push-pr.outputs.pr-url }}
+  cleanup-count:
+    description: '识别出的需清理分支数量'
+    value: ${{ steps.cleanup-branches.outputs.cleanup-count }}
+  cleaned-count:
+    description: '实际清理的分支数量'
+    value: ${{ steps.cleanup-branches.outputs.cleaned-count }}
 inputs:
   prompt:
-    description: 'The prompt to Claude Code'
+    description: '发送给 Claude Code 的提示词'
     required: false
   prompt-file:
-    description: 'The file to pipe into Claude Code'
+    description: '要传递给 Claude Code 的文件'
     required: false
   acknowledge-dangerously-skip-permissions-responsibility:
-    description: 'By setting this value to "true", you accept that you have read and agreed to the disclaimer which is shown when running `claude code --dangerously-skip-permissions`'
+    description: '将此值设置为 "true" 表示您已阅读并同意运行 `claude code --dangerously-skip-permissions` 时显示的免责声明'
     required: true
   verbose:
-    description: 'Verbose output from Claude Code'
+    description: '启用 Claude Code 的详细输出'
     required: false
+  create-pr:
+    description: '为 Claude 的变更创建拉取请求'
+    required: false
+    default: 'true'
+  base-branch:
+    description: '创建拉取请求的目标分支'
+    required: false
+    default: 'main'
+  cleanup-branches:
+    description: '启用自动清理旧的 Claude Code 分支'
+    required: false
+    default: 'true'
+  cleanup-pattern:
+    description: '匹配需要清理的分支模式（支持正则表达式）'
+    required: false
+    default: '^claude-code-changes-.*'
+  cleanup-keep-days:
+    description: '保留 N 天内创建的分支（0 = 无时间限制）'
+    required: false
+    default: '7'
+  cleanup-merged-only:
+    description: '仅清理已合并或关闭的分支'
+    required: false
+    default: 'true'
+  cleanup-dry-run:
+    description: '显示将被清理的内容但不实际删除'
+    required: false
+    default: 'false'
     
 runs:
   using: 'composite'
@@ -27,20 +64,20 @@ runs:
       shell: bash
       run: |
         if [ "${{ inputs.acknowledge-dangerously-skip-permissions-responsibility }}" != "true" ]; then
-          echo "Error: You must set acknowledge-dangerously-skip-permissions-responsibility to true to use this action."
-          echo "This acknowledges that you have read and agreed to the disclaimer shown when running 'claude code --dangerously-skip-permissions'."
+          echo "错误：您必须将 acknowledge-dangerously-skip-permissions-responsibility 设置为 true 才能使用此操作。"
+          echo "这表示您已阅读并同意运行 'claude code --dangerously-skip-permissions' 时显示的免责声明。"
           exit 1
         fi
-        echo "Acknowledgement confirmed."
+        echo "确认已阅读声明。"
     
     - name: Validate prompt inputs
       shell: bash
       run: |
         if [ -z "${{ inputs.prompt }}" ] && [ -z "${{ inputs.prompt-file }}" ]; then
-          echo "Error: You must provide either 'prompt' or 'prompt-file' input."
+          echo "错误：您必须提供 'prompt' 或 'prompt-file' 输入。"
           exit 1
         fi
-        echo "Prompt input validation passed."
+        echo "提示词输入验证通过。"
 
     - name: Setup Claude Config for Docker
       shell: bash
@@ -48,17 +85,17 @@ runs:
         mkdir -p ${GITHUB_ACTION_PATH}/claude-code/.claude
         cat ${GITHUB_ACTION_PATH}/config_template.json | sed 's/CLAUDE_API_KEY/${{ env.ANTHROPIC_API_KEY }}/' > ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
         chmod 666 ${GITHUB_ACTION_PATH}/claude-code/.claude/.claude.json
-        echo "Claude config created for Docker mount"
+        echo "Docker 挂载的 Claude 配置已创建"
 
     - name: Start Claude Docker container
       shell: bash
       run: |
-        echo "Starting Claude Docker container..."
+        echo "正在启动 Claude Docker 容器..."
         
         # Get the UID and GID of the current user on the host (the runner)
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
-        echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
+        echo "主机运行器 UID:GID = $HOST_UID:$HOST_GID"
         
         # Start the container with the host's UID and GID
         docker run -dit --rm \
@@ -94,7 +131,7 @@ runs:
       run: |
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
-        echo "Host runner UID:GID = $HOST_UID:$HOST_GID"
+        echo "主机运行器 UID:GID = $HOST_UID:$HOST_GID"
 
         (
           set +e  # allow script to continue on errors
@@ -103,9 +140,9 @@ runs:
           EXIT_CODE=0
           
           if [ ! -z "${{ inputs.prompt }}" ] && [ ! -z "${{ inputs.prompt-file }}" ]; then
-            echo "Running Claude with both prompt and file"
-            echo "Prompt argument: ${{ inputs.prompt }}"
-            echo "Prompt file: ${{ inputs.prompt-file }}"
+            echo "同时使用提示词和文件运行 Claude"
+            echo "提示词参数：${{ inputs.prompt }}"
+            echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
               timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' < ${{ inputs.prompt-file }} > ~/claude-output.txt
               EXIT_CODE=$?
@@ -114,8 +151,8 @@ runs:
               EXIT_CODE=$?
             fi
           elif [ ! -z "${{ inputs.prompt }}" ]; then
-            echo "Running Claude with prompt argument only"
-            echo "Prompt: ${{ inputs.prompt }}"
+            echo "仅使用提示词参数运行 Claude"
+            echo "提示词：${{ inputs.prompt }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
               timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions '${{ inputs.prompt }}' > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
@@ -124,8 +161,8 @@ runs:
               EXIT_CODE=$?
             fi
           elif [ ! -z "${{ inputs.prompt-file }}" ]; then
-            echo "Running Claude with prompt-file input only"
-            echo "Prompt file: ${{ inputs.prompt-file }}"
+            echo "仅使用提示词文件运行 Claude"
+            echo "提示词文件：${{ inputs.prompt-file }}"
             if [ "${{ inputs.verbose }}" != "true" ]; then
               timeout 30m docker exec -i -u $HOST_UID:$HOST_GID -e HOME=/home/node -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY claude-code-container claude -p --dangerously-skip-permissions < ${{ inputs.prompt-file }} > ~/claude-output.txt 2>&1
               EXIT_CODE=$?
@@ -135,7 +172,7 @@ runs:
             fi
           fi
 
-          echo "Claude output:"
+          echo "Claude 输出："
           cat ~/claude-output.txt
 
           # Set the output variable. Use a random string for the EOF marker so that EOF in the claude output (which can happen if claude does any bash work) doesn't confuse github
@@ -145,3 +182,441 @@ runs:
 
           exit $EXIT_CODE
         )
+
+    - name: Detect git changes
+      id: git-changes
+      shell: bash
+      run: |
+        if [ "${{ inputs.create-pr }}" == "true" ]; then
+          echo "正在检查 git 变更..."
+          
+          # Configure git if not already configured
+          git config --global --add safe.directory /workspace || true
+          git config --global user.name "Claude Code Action" || true
+          git config --global user.email "action@users.noreply.github.com" || true
+          
+          # Check if there are any changes
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes-detected=true" >> $GITHUB_OUTPUT
+            echo "检测到变更："
+            git status --short
+          else
+            echo "changes-detected=false" >> $GITHUB_OUTPUT
+            echo "未检测到变更"
+          fi
+        else
+          echo "未启用拉取请求创建，跳过变更检测"
+          echo "changes-detected=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Cleanup old branches
+      id: cleanup-branches
+      if: inputs.cleanup-branches == 'true'
+      shell: bash
+      run: |
+        echo "🧹 开始分支清理进程..."
+        
+        # Configuration
+        CLEANUP_PATTERN="${{ inputs.cleanup-pattern }}"
+        KEEP_DAYS="${{ inputs.cleanup-keep-days }}"
+        MERGED_ONLY="${{ inputs.cleanup-merged-only }}"
+        DRY_RUN="${{ inputs.cleanup-dry-run }}"
+        
+        echo "📋 清理配置："
+        echo "  模式： $CLEANUP_PATTERN"
+        echo "  保留天数： $KEEP_DAYS"
+        echo "  仅已合并： $MERGED_ONLY"
+        echo "  干运行： $DRY_RUN"
+        echo ""
+        
+        # Fetch latest branch information
+        git fetch origin --prune
+        
+        # Get current branch to avoid deleting it
+        CURRENT_BRANCH=$(git branch --show-current)
+        echo "🔒 当前分支（受保护）： $CURRENT_BRANCH"
+        
+        # Protected branches that should never be deleted
+        PROTECTED_BRANCHES="main master develop staging production release"
+        echo "🔒 受保护的分支： $PROTECTED_BRANCHES"
+        echo ""
+        
+        # Find candidate branches for cleanup
+        echo "🔍 扫描清理候选分支..."
+        CLEANUP_CANDIDATES=()
+        CLEANUP_SUMMARY=""
+        
+        # Get all remote branches that match the pattern
+        for branch in $(git branch -r --format='%(refname:short)' | grep -E "$CLEANUP_PATTERN" | sed 's/origin\///'); do
+          # Skip if it's the current branch
+          if [ "$branch" = "$CURRENT_BRANCH" ]; then
+            echo "⏭️  跳过当前分支： $branch"
+            continue
+          fi
+          
+          # Skip if it's a protected branch
+          if echo "$PROTECTED_BRANCHES" | grep -wq "$branch"; then
+            echo "⏭️  跳过受保护分支： $branch"
+            continue
+          fi
+          
+          echo "📊 分析分支： $branch"
+          
+          # Check branch age if KEEP_DAYS > 0
+          if [ "$KEEP_DAYS" -gt 0 ]; then
+            # Get the creation date of the branch
+            BRANCH_DATE=$(git log -1 --format="%ct" "origin/$branch" 2>/dev/null || echo "0")
+            CURRENT_DATE=$(date +%s)
+            AGE_DAYS=$(( (CURRENT_DATE - BRANCH_DATE) / 86400 ))
+            
+            if [ "$AGE_DAYS" -lt "$KEEP_DAYS" ]; then
+              echo "   ⏰ 太新（$AGE_DAYS 天前，保留 < $KEEP_DAYS 天的分支）"
+              continue
+            else
+              echo "   ⏰ 年龄： $AGE_DAYS 天（符合清理条件）"
+            fi
+          fi
+          
+          # Check PR status if MERGED_ONLY is true
+          if [ "$MERGED_ONLY" = "true" ]; then
+            # Check if there's a PR for this branch and its status
+            PR_STATE=$(gh pr list --head "$branch" --json state --jq '.[0].state' 2>/dev/null || echo "")
+            
+            if [ -z "$PR_STATE" ]; then
+              echo "   🔍 未找到此分支的拉取请求"
+              # Allow deletion of branches without PRs if they're old enough
+            elif [ "$PR_STATE" = "MERGED" ]; then
+              echo "   ✅ 拉取请求已合并（可安全删除）"
+            elif [ "$PR_STATE" = "CLOSED" ]; then
+              echo "   ❌ 拉取请求已关闭（可安全删除）"
+            elif [ "$PR_STATE" = "OPEN" ]; then
+              echo "   🔄 拉取请求仍在开放中（跳过）"
+              continue
+            else
+              echo "   ❓ 未知拉取请求状态： $PR_STATE（跳过）"
+              continue
+            fi
+          fi
+          
+          # Add to cleanup candidates
+          CLEANUP_CANDIDATES+=("$branch")
+          CLEANUP_SUMMARY="$CLEANUP_SUMMARY\n- $branch"
+          echo "   ✓ 已添加到清理列表"
+        done
+        
+        echo ""
+        echo "📝 清理摘要："
+        if [ ${#CLEANUP_CANDIDATES[@]} -eq 0 ]; then
+          echo "   未找到需要清理的分支"
+          echo "cleanup-count=0" >> $GITHUB_OUTPUT
+        else
+          echo "   找到 ${#CLEANUP_CANDIDATES[@]} 个需要清理的分支："
+          printf "$CLEANUP_SUMMARY\n"
+          echo "cleanup-count=${#CLEANUP_CANDIDATES[@]}" >> $GITHUB_OUTPUT
+          
+          # Execute cleanup
+          if [ "$DRY_RUN" = "true" ]; then
+            echo ""
+            echo "🔍 干运行模式 - 不会删除任何分支"
+            echo "cleanup-executed=false" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "🗑️  正在执行清理..."
+            CLEANED_COUNT=0
+            for branch in "${CLEANUP_CANDIDATES[@]}"; do
+              echo "   正在删除分支： $branch"
+              if git push origin --delete "$branch" 2>/dev/null; then
+                echo "   ✅ 成功删除： $branch"
+                ((CLEANED_COUNT++))
+              else
+                echo "   ❌ 删除失败： $branch"
+              fi
+            done
+            echo "cleanup-executed=true" >> $GITHUB_OUTPUT
+            echo "cleaned-count=$CLEANED_COUNT" >> $GITHUB_OUTPUT
+            echo ""
+            echo "🎉 清理完成！删除了 ${#CLEANUP_CANDIDATES[@]} 个分支中的 $CLEANED_COUNT 个"
+          fi
+        fi
+
+    - name: Create branch and commit changes
+      id: commit-changes
+      if: steps.git-changes.outputs.changes-detected == 'true'
+      shell: bash
+      run: |
+        echo "正在创建分支并提交变更..."
+        
+        # Auto-generate branch name with timestamp
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        BRANCH_NAME="claude-code-changes-${TIMESTAMP}"
+        
+        echo "分支名称： $BRANCH_NAME"
+        echo "branch-name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        
+        # Create and switch to new branch
+        git checkout -b "$BRANCH_NAME"
+        
+        # Stage all changes
+        git add .
+        
+        # Auto-generate commit message based on prompt
+        PROMPT_SUMMARY="${{ inputs.prompt }}"
+        if [ -z "$PROMPT_SUMMARY" ]; then
+          PROMPT_SUMMARY="代码优化和改进"
+        fi
+        
+        COMMIT_MESSAGE="🤖 Claude Code: ${PROMPT_SUMMARY}
+
+通过 Claude Code 自动化处理，基于提示词进行的智能代码变更。
+
+🔧 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+        
+        git commit -m "$COMMIT_MESSAGE"
+        echo "变更已成功提交"
+
+    - name: Analyze changes with Claude
+      id: analyze-changes
+      if: steps.commit-changes.outputs.branch-name != ''
+      shell: bash
+      run: |
+        echo "🔍 正在收集代码变更信息用于智能分析..."
+        
+        # Collect git diff and statistics
+        echo "收集变更统计..."
+        STATS=$(git diff --stat HEAD~1 HEAD 2>/dev/null || git diff --stat ${{ inputs.base-branch }} HEAD 2>/dev/null || echo "无法生成统计信息")
+        
+        echo "收集详细差异..."
+        DIFF=$(git diff HEAD~1 HEAD 2>/dev/null || git diff ${{ inputs.base-branch }} HEAD 2>/dev/null || echo "无法生成差异信息")
+        
+        # Limit diff size to prevent API overload (keep first 8000 chars)
+        if [ ${#DIFF} -gt 8000 ]; then
+          DIFF="${DIFF:0:8000}... [差异内容过长已截断]"
+        fi
+        
+        echo "收集文件列表..."
+        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only ${{ inputs.base-branch }} HEAD 2>/dev/null || echo "无法获取文件列表")
+        
+        # Save to files for next step
+        echo "$STATS" > /tmp/git-stats.txt
+        echo "$DIFF" > /tmp/git-diff.txt  
+        echo "$CHANGED_FILES" > /tmp/changed-files.txt
+        
+        echo "✅ 变更信息收集完成"
+
+    - name: Generate PR content with Claude
+      id: generate-pr
+      if: steps.commit-changes.outputs.branch-name != ''
+      shell: bash
+      run: |
+        echo "🤖 正在使用 Claude 智能生成 PR 内容..."
+        
+        # Read collected information
+        STATS=$(cat /tmp/git-stats.txt)
+        DIFF=$(cat /tmp/git-diff.txt)
+        CHANGED_FILES=$(cat /tmp/changed-files.txt)
+        USER_PROMPT="${{ inputs.prompt }}"
+        
+        # Create analysis prompt for Claude
+        ANALYSIS_PROMPT="请作为一个专业的代码审查专家，分析以下代码变更并生成专业的 Pull Request 标题和描述。
+
+原始用户请求：
+${USER_PROMPT}
+
+变更统计：
+${STATS}
+
+变更的文件：
+${CHANGED_FILES}
+
+代码差异：
+${DIFF}
+
+请按照以下格式输出：
+
+PR_TITLE: [简洁专业的PR标题，不超过60字符，体现主要变更]
+PR_BODY: [详细的PR描述，包括：
+1. 变更概述（2-3句话说明做了什么）
+2. 主要改动点（列出3-5个关键变更）
+3. 影响范围（说明可能影响的功能或模块）
+4. 测试建议（如果适用）
+请用专业但易懂的中文描述]
+
+注意：
+- 标题要简洁有力，体现核心改动
+- 描述要专业详细，但避免过于技术化
+- 重点关注业务价值和用户影响
+- 如果是重构，说明改进的方面
+- 如果是新功能，说明功能价值"
+
+        # Create temporary file for analysis
+        echo "$ANALYSIS_PROMPT" > /tmp/claude-analysis-prompt.txt
+        
+        echo "📡 正在调用 Claude 进行智能分析..."
+        
+        # Call Claude to analyze changes with timeout
+        timeout 300s docker exec -i claude-code-container claude -p --dangerously-skip-permissions "$(cat /tmp/claude-analysis-prompt.txt)" > /tmp/claude-analysis-result.txt 2>&1
+        CLAUDE_EXIT_CODE=$?
+        
+        if [ $CLAUDE_EXIT_CODE -eq 0 ]; then
+          echo "✅ Claude 智能分析完成"
+          
+          # Check if we got a proper response
+          if grep -q "PR_TITLE:" /tmp/claude-analysis-result.txt && grep -q "PR_BODY:" /tmp/claude-analysis-result.txt; then
+            echo "🎯 解析成功，找到标准格式输出"
+            echo "--- Claude 分析结果预览 ---"
+            head -10 /tmp/claude-analysis-result.txt
+            echo "--- 预览结束 ---"
+          else
+            echo "⚠️ Claude 输出格式不标准，使用备用解析"
+            # Try to use the whole output as PR body
+            echo "PR_TITLE: 🤖 Claude Code: ${USER_PROMPT}" > /tmp/claude-analysis-fallback.txt
+            echo "PR_BODY: " >> /tmp/claude-analysis-fallback.txt
+            cat /tmp/claude-analysis-result.txt >> /tmp/claude-analysis-fallback.txt
+            mv /tmp/claude-analysis-fallback.txt /tmp/claude-analysis-result.txt
+          fi
+        else
+          echo "⚠️ Claude 分析失败 (退出码: $CLAUDE_EXIT_CODE)，使用备用方案"
+          echo "错误信息："
+          tail -5 /tmp/claude-analysis-result.txt 2>/dev/null || echo "无法读取错误信息"
+          
+          # Fallback to simple generation
+          echo "PR_TITLE: 🤖 Claude Code: ${USER_PROMPT}" > /tmp/claude-analysis-result.txt
+          echo "PR_BODY: **变更说明:** ${USER_PROMPT}" >> /tmp/claude-analysis-result.txt
+          echo "" >> /tmp/claude-analysis-result.txt
+          echo "通过 Claude Code 基于用户提示词进行的智能代码变更。" >> /tmp/claude-analysis-result.txt
+          echo "" >> /tmp/claude-analysis-result.txt
+          echo "⚠️ 注意：由于 Claude 分析服务临时不可用，此描述为自动生成的备用内容。" >> /tmp/claude-analysis-result.txt
+        fi
+
+    - name: Push branch and create Pull Request
+      id: push-pr
+      if: steps.commit-changes.outputs.branch-name != ''
+      shell: bash
+      run: |
+        echo "正在推送分支并创建拉取请求..."
+        
+        BRANCH_NAME="${{ steps.commit-changes.outputs.branch-name }}"
+        
+        # Push the branch to remote
+        echo "正在推送分支： $BRANCH_NAME"
+        git push origin "$BRANCH_NAME"
+        
+        # Create Pull Request using GitHub CLI
+        echo "正在创建拉取请求..."
+        
+        # Parse Claude analysis result
+        if [ -f "/tmp/claude-analysis-result.txt" ]; then
+          echo "📋 解析 Claude 智能分析结果..."
+          
+          # Extract PR title and body from Claude's analysis
+          PR_TITLE=$(grep "^PR_TITLE:" /tmp/claude-analysis-result.txt | sed 's/^PR_TITLE: *//' | head -1)
+          
+          # Extract PR body - everything after "PR_BODY:" until end of file
+          PR_BODY_RAW=$(sed -n '/^PR_BODY:/,$p' /tmp/claude-analysis-result.txt | sed '1s/^PR_BODY: *//' | sed '/^$/N;/^\n$/d')
+          
+          # Fallback if parsing fails
+          if [ -z "$PR_TITLE" ]; then
+            USER_PROMPT="${{ inputs.prompt }}"
+            PR_TITLE="🤖 Claude Code: ${USER_PROMPT}"
+            echo "⚠️ 无法解析标题，使用备用方案"
+          fi
+          
+          if [ -z "$PR_BODY_RAW" ]; then
+            USER_PROMPT="${{ inputs.prompt }}"
+            PR_BODY_RAW="**变更说明:** ${USER_PROMPT}
+
+通过 Claude Code 基于用户提示词进行的智能代码变更。"
+            echo "⚠️ 无法解析描述，使用备用方案"
+          fi
+          
+          echo "📝 使用 Claude 智能生成的内容："
+          echo "标题: $PR_TITLE"
+          echo "描述预览: $(echo "$PR_BODY_RAW" | head -3 | tr '\n' ' ')..."
+          
+        else
+          echo "⚠️ 未找到 Claude 分析结果，使用备用方案"
+          USER_PROMPT="${{ inputs.prompt }}"
+          PR_TITLE="🤖 Claude Code: ${USER_PROMPT}"
+          PR_BODY_RAW="**变更说明:** ${USER_PROMPT}
+
+通过 Claude Code 基于用户提示词进行的智能代码变更。"
+        fi
+        
+        # Construct final PR body with metadata
+        PR_BODY="${PR_BODY_RAW}
+
+---
+🤖 此拉取请求由 Claude Code Action 智能生成。
+
+**变更来源:** Claude Code  
+**目标分支:** ${{ inputs.base-branch }}  
+**源分支:** $BRANCH_NAME  
+
+🔧 Generated with [Claude Code](https://claude.ai/code)"
+        
+        # Create the PR and capture the URL
+        PR_URL=$(gh pr create \
+          --title "$PR_TITLE" \
+          --body "$PR_BODY" \
+          --base "${{ inputs.base-branch }}" \
+          --head "$BRANCH_NAME")
+        
+        echo "拉取请求创建成功： $PR_URL"
+        echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+        
+        # Add PR URL to the step summary
+        echo "## 🎉 拉取请求已创建" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**拉取请求:** [$PR_URL]($PR_URL)" >> $GITHUB_STEP_SUMMARY
+        echo "**分支:** \`$BRANCH_NAME\`" >> $GITHUB_STEP_SUMMARY
+        echo "**目标分支:** \`${{ inputs.base-branch }}\`" >> $GITHUB_STEP_SUMMARY
+        
+        # Add cleanup summary if cleanup was enabled
+        if [ "${{ inputs.cleanup-branches }}" = "true" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🧹 分支清理摘要" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CLEANUP_COUNT="${{ steps.cleanup-branches.outputs.cleanup-count }}"
+          CLEANED_COUNT="${{ steps.cleanup-branches.outputs.cleaned-count }}"
+          
+          if [ "$CLEANUP_COUNT" = "0" ]; then
+            echo "✨ 未找到需要清理的旧分支" >> $GITHUB_STEP_SUMMARY
+          else
+            if [ "${{ inputs.cleanup-dry-run }}" = "true" ]; then
+              echo "🔍 **干运行模式:** 找到 $CLEANUP_COUNT 个将被清理的分支" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "🗑️ **已清理:** $CLEANUP_COUNT 个识别分支中的 $CLEANED_COUNT 个" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "**模式:** \`${{ inputs.cleanup-pattern }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**保留天数:** ${{ inputs.cleanup-keep-days }}" >> $GITHUB_STEP_SUMMARY
+            echo "**仅已合并:** ${{ inputs.cleanup-merged-only }}" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+
+    - name: Cleanup-only summary
+      if: inputs.cleanup-branches == 'true' && steps.commit-changes.outputs.branch-name == ''
+      shell: bash
+      run: |
+        echo "## 🧹 分支清理摘要" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        CLEANUP_COUNT="${{ steps.cleanup-branches.outputs.cleanup-count }}"
+        CLEANED_COUNT="${{ steps.cleanup-branches.outputs.cleaned-count }}"
+        
+        if [ "$CLEANUP_COUNT" = "0" ]; then
+          echo "✨ 未找到需要清理的旧分支" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ inputs.cleanup-dry-run }}" = "true" ]; then
+            echo "🔍 **干运行模式:** 找到 $CLEANUP_COUNT 个将被清理的分支" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🗑️ **已清理:** $CLEANUP_COUNT 个识别分支中的 $CLEANED_COUNT 个" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**配置信息:**" >> $GITHUB_STEP_SUMMARY
+          echo "- **模式:** \`${{ inputs.cleanup-pattern }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **保留天数:** ${{ inputs.cleanup-keep-days }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **仅已合并:** ${{ inputs.cleanup-merged-only }}" >> $GITHUB_STEP_SUMMARY
+        fi
