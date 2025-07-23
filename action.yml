@@ -257,6 +257,8 @@ runs:
       id: cleanup-branches
       if: inputs.cleanup-branches == 'true'
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         echo "🧹 开始分支清理进程..."
         
@@ -453,6 +455,8 @@ runs:
       id: generate-pr
       if: steps.commit-changes.outputs.branch-name != ''
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         echo "🤖 正在使用 Claude 智能生成 PR 内容..."
         
@@ -546,6 +550,8 @@ runs:
       id: push-pr
       if: steps.commit-changes.outputs.branch-name != ''
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         echo "正在推送分支并创建拉取请求..."
         
