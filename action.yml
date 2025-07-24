@@ -467,15 +467,17 @@ runs:
         USER_PROMPT="${{ inputs.prompt }}"
         
         # 创建简化的 Claude 分析提示词
-        ANALYSIS_PROMPT="请分析以下代码变更并生成 Pull Request 内容。
-    
+        ANALYSIS_PROMPT="请严格按照以下格式分析代码变更并生成 Pull Request 内容。不要写入文件，只是直接输出即可。
+
         用户请求: ${USER_PROMPT}
         变更文件: ${CHANGED_FILES}
         变更统计: ${STATS}
-    
-        请按此格式输出：
-        PR_TITLE: [简洁的标题]
-        PR_BODY: [详细描述]"
+        
+        输出格式要求（必须严格遵守）：
+        PR_TITLE: [在这里写一个简洁的标题，不要包含方括号]
+        PR_BODY: [在这里写详细的描述内容，可以多行，不要包含方括号]
+        
+        注意：必须以 'PR_TITLE: ' 和 'PR_BODY: ' 开头，后面直接跟内容。"
         
         echo "$ANALYSIS_PROMPT" > /tmp/claude-analysis-prompt.txt
         
@@ -520,35 +522,13 @@ runs:
           PR_TITLE=$(grep "^PR_TITLE:" /tmp/claude-analysis-result.txt | sed 's/^PR_TITLE: *//' | head -1)
           
           # Extract PR body - everything after "PR_BODY:" until end of file
-          PR_BODY_RAW=$(sed -n '/^PR_BODY:/,$p' /tmp/claude-analysis-result.txt | sed '1s/^PR_BODY: *//' | sed '/^$/N;/^\n$/d')
+          PR_BODY_RAW=$(sed -n '/^PR_BODY:/,$p' /tmp/claude-analysis-result.txt | sed '1s/^PR_BODY: *//')
           
-          # Fallback if parsing fails
-          if [ -z "$PR_TITLE" ]; then
-            USER_PROMPT="${{ inputs.prompt }}"
+          if [ -z "$PR_TITLE" ] || [ -z "$PR_BODY_RAW" ]; then
+            echo "⚠️ Claude 输出格式不匹配，使用完整输出"
             PR_TITLE="🤖 Claude Code: ${USER_PROMPT}"
-            echo "⚠️ 无法解析标题，使用备用方案"
+            PR_BODY_RAW=$(cat /tmp/claude-analysis-result.txt)
           fi
-          
-          if [ -z "$PR_BODY_RAW" ]; then
-            USER_PROMPT="${{ inputs.prompt }}"
-            PR_BODY_RAW="**变更说明:** ${USER_PROMPT}
-
-            通过 Claude Code 基于用户提示词进行的智能代码变更。"
-            echo "⚠️ 无法解析描述，使用备用方案"
-          fi
-          
-          echo "📝 使用 Claude 智能生成的内容："
-          echo "标题: $PR_TITLE"
-          echo "描述预览: $(echo "$PR_BODY_RAW" | head -3 | tr '\n' ' ')..."
-          
-        else
-          echo "⚠️ 未找到 Claude 分析结果，使用备用方案"
-          USER_PROMPT="${{ inputs.prompt }}"
-          PR_TITLE="🤖 Claude Code: ${USER_PROMPT}"
-          PR_BODY_RAW="**变更说明:** ${USER_PROMPT}
-
-          通过 Claude Code 基于用户提示词进行的智能代码变更。"
-        fi
         
         # Construct final PR body with metadata
         PR_BODY="${PR_BODY_RAW}
