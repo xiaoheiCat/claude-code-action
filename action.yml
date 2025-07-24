@@ -523,7 +523,8 @@ runs:
           
           # Extract PR body - everything after "PR_BODY:" until end of file
           PR_BODY_RAW=$(sed -n '/^PR_BODY:/,$p' /tmp/claude-analysis-result.txt | sed '1s/^PR_BODY: *//')
-          
+        fi
+        
           if [ -z "$PR_TITLE" ] || [ -z "$PR_BODY_RAW" ]; then
             echo "⚠️ Claude 输出格式不匹配，使用完整输出"
             PR_TITLE="🤖 Claude Code: ${USER_PROMPT}"
